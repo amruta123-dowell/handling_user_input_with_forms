@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:handling_user_input_with_forms/data/categories.dart';
 import 'package:handling_user_input_with_forms/model/category_model.dart';
 import 'package:handling_user_input_with_forms/model/grocery_item_model.dart';
+import 'package:http/http.dart' as http;
 
 class NewItem extends StatefulWidget {
   const NewItem({super.key});
@@ -14,20 +17,42 @@ class NewItem extends StatefulWidget {
 
 class _NewItemState extends State<NewItem> {
   final _formKey = GlobalKey<FormState>();
-  String? _enteredName = '';
+  String _enteredName = '';
   int _enteredQty = 1;
   var selectedCategory = categories[Categories.vegetables];
 
-  void _saveItem() {
+  bool _isSending = false;
+  void _saveItem() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      Navigator.of(context).pop(GroceryItemModel(
-          id: DateTime.now().toString(),
-          name: _enteredName.toString(),
-          quantity: _enteredQty,
-          category: selectedCategory));
+      setState(() {
+        _isSending = true;
+      });
+      final url = Uri.https("udemy-firebase-5c7a5-default-rtdb.firebaseio.com",
+          "shopping-list.json");
+      var response = await http.post(url,
+          headers: {"Content-Type": "application/json"},
+          body: json.encode({
+            "name": _enteredName,
+            "quantity": _enteredQty,
+            "category": selectedCategory?.title
+          }));
+      print(response.body);
+      Map<String, dynamic> decodedResponse = json.decode(response.body);
+
+      if (!context.mounted) {
+        return;
+      } else {
+        Navigator.of(context).pop(GroceryItemModel(
+            id: decodedResponse["name"],
+            name: _enteredName,
+            quantity: _enteredQty,
+            category: selectedCategory));
+      }
     }
   }
+
+  //call API
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +81,7 @@ class _NewItemState extends State<NewItem> {
                     return null;
                   },
                   onSaved: (savedVal) {
-                    _enteredName = savedVal;
+                    _enteredName = savedVal ?? '';
                   },
                 ),
                 Row(
@@ -125,14 +150,21 @@ class _NewItemState extends State<NewItem> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
-                      onPressed: () {
-                        _formKey.currentState!.reset();
-                      },
-                      child: const Text("Reset"),
+                      onPressed: _isSending
+                          ? null
+                          : () {
+                              _formKey.currentState!.reset();
+                            },
+                      child: Text(_isSending ? "Sending..." : "Reset"),
                     ),
                     ElevatedButton(
-                      onPressed: _saveItem,
-                      child: const Text('Add item'),
+                      onPressed: _isSending ? null : _saveItem,
+                      child: _isSending
+                          ? const SizedBox(
+                              height: 20,
+                              child: CircularProgressIndicator(),
+                            )
+                          : const Text('Add item'),
                     )
                   ],
                 )
